@@ -15,8 +15,18 @@ async function main(): Promise<void> {
 
   const client = new GerritClient();
 
-  const version = await client.getVersion();
-  const availableCommands = await client.getAvailableCommands();
+  let version = "unknown";
+  let availableCommands = new Set<string>();
+  try {
+    version = await client.getVersion();
+    availableCommands = await client.getAvailableCommands();
+  } catch (err) {
+    // Server may be unreachable; register tools anyway and let individual tool calls fail
+    availableCommands = new Set<string>([
+      "query", "review", "abandon", "restore", "submit",
+      "set-reviewers", "ls-projects", "version",
+    ]);
+  }
 
   registerChangeTools(server, client, availableCommands);
   registerAccountTools(server, client, availableCommands);
@@ -28,7 +38,7 @@ async function main(): Promise<void> {
 
   server.sendLoggingMessage({
     level: "info",
-    data: `Gerrit MCP server connected to ${client.getBaseUrl()} (${client.getTransport()}, version ${version.trim()})`,
+    data: `Gerrit MCP server connected to ${client.getBaseUrl()} (${client.getTransport()}, version ${version})`,
   });
 }
 

@@ -6,7 +6,11 @@ import type { GerritAccount } from "../gerrit/types.js";
 export function registerAccountTools(
   server: McpServer,
   client: GerritClient,
+  _availableCommands?: Set<string>,
 ): void {
+  const transport = client.getTransport();
+  if (transport === "ssh") return;
+
   server.registerTool(
     "get_account",
     {

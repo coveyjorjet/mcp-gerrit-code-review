@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { stripGerritPrefix } from "../src/utils/parsing.js";
+import { stripGerritPrefix, parseSshUrl, resolveTransport } from "../src/utils/parsing.js";
 
 describe("stripGerritPrefix", () => {
   it("strips the Gerrit magic prefix", () => {
@@ -19,11 +19,89 @@ describe("stripGerritPrefix", () => {
   });
 });
 
-describe("GerritClient", () => {
+describe("resolveTransport", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("defaults to http", async () => {
+    vi.stubEnv("GERRIT_TRANSPORT", undefined);
+    const mod = await import("../src/utils/parsing.js");
+    expect(mod.resolveTransport()).toBe("http");
+  });
+
+  it("returns ssh when set", async () => {
+    vi.stubEnv("GERRIT_TRANSPORT", "ssh");
+    const mod = await import("../src/utils/parsing.js");
+    expect(mod.resolveTransport()).toBe("ssh");
+  });
+
+  it("throws on invalid transport", async () => {
+    vi.stubEnv("GERRIT_TRANSPORT", "ftp");
+    const mod = await import("../src/utils/parsing.js");
+    expect(() => mod.resolveTransport()).toThrow("GERRIT_TRANSPORT must be");
+  });
+});
+
+describe("parseSshUrl", () => {
+  it("parses ssh:// URL with port", () => {
+    expect(parseSshUrl("ssh://gerrit.example.com:29418")).toEqual({
+      host: "gerrit.example.com",
+      port: 29418,
+    });
+  });
+
+  it("parses ssh:// URL without port", () => {
+    expect(parseSshUrl("ssh://gerrit.example.com")).toEqual({
+      host: "gerrit.example.com",
+      port: 29418,
+    });
+  });
+
+  it("parses ssh:// URL with username", () => {
+    expect(parseSshUrl("ssh://covey@gerrit.example.com:29418")).toEqual({
+      host: "gerrit.example.com",
+      port: 29418,
+      username: "covey",
+    });
+  });
+
+  it("parses scp-style user@host", () => {
+    expect(parseSshUrl("covey@gerrit.example.com")).toEqual({
+      host: "gerrit.example.com",
+      port: 29418,
+      username: "covey",
+    });
+  });
+
+  it("parses scp-style user@host:port", () => {
+    expect(parseSshUrl("covey@gerrit.example.com:2222")).toEqual({
+      host: "gerrit.example.com",
+      port: 2222,
+      username: "covey",
+    });
+  });
+
+  it("parses host-only", () => {
+    expect(parseSshUrl("gerrit.example.com")).toEqual({
+      host: "gerrit.example.com",
+      port: 29418,
+    });
+  });
+
+  it("throws on invalid URL", () => {
+    expect(() => parseSshUrl("https://gerrit.example.com")).toThrow(
+      "Cannot parse SSH URL"
+    );
+  });
+});
+
+describe("GerritClient HTTP", () => {
   let GerritClient: typeof import("../src/gerrit/client.js").GerritClient;
 
   beforeEach(() => {
     vi.resetModules();
+    vi.stubEnv("GERRIT_TRANSPORT", "http");
     vi.stubEnv("GERRIT_URL", "https://gerrit.example.com");
     vi.stubEnv("GERRIT_USERNAME", "testuser");
     vi.stubEnv("GERRIT_PASSWORD", "testpass");
@@ -33,6 +111,7 @@ describe("GerritClient", () => {
     const mod = await import("../src/gerrit/client.js");
     const client = new mod.GerritClient();
     expect(client.getBaseUrl()).toBe("https://gerrit.example.com");
+    expect(client.getTransport()).toBe("http");
   });
 
   it("strips trailing slash from base URL", async () => {

@@ -15,17 +15,20 @@ async function main(): Promise<void> {
 
   const client = new GerritClient();
 
-  registerChangeTools(server, client);
-  registerAccountTools(server, client);
-  registerProjectTools(server, client);
-  registerServerTools(server, client);
+  const version = await client.getVersion();
+  const availableCommands = await client.getAvailableCommands();
+
+  registerChangeTools(server, client, availableCommands);
+  registerAccountTools(server, client, availableCommands);
+  registerProjectTools(server, client, availableCommands);
+  registerServerTools(server, client, availableCommands);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
   server.sendLoggingMessage({
     level: "info",
-    data: `Gerrit MCP server connected to ${client.getBaseUrl()}`,
+    data: `Gerrit MCP server connected to ${client.getBaseUrl()} (${client.getTransport()}, version ${version.trim()})`,
   });
 }
 

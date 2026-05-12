@@ -5,26 +5,9 @@ import type { GerritServerInfo } from "../gerrit/types.js";
 export function registerServerTools(
   server: McpServer,
   client: GerritClient,
+  _availableCommands?: Set<string>,
 ): void {
-  server.registerTool(
-    "get_server_info",
-    {
-      description:
-        "Get Gerrit server configuration info. Returns server capabilities, " +
-        "authentication methods, change settings, download schemes, and plugin info.",
-      inputSchema: undefined,
-    },
-    async () => {
-      const result = await client.get<GerritServerInfo>(
-        "/config/server/info",
-      );
-      return {
-        content: [
-          { type: "text" as const, text: JSON.stringify(result, null, 2) },
-        ],
-      };
-    },
-  );
+  const transport = client.getTransport();
 
   server.registerTool(
     "get_server_version",
@@ -35,9 +18,7 @@ export function registerServerTools(
       inputSchema: undefined,
     },
     async () => {
-      const result = await client.get<string>(
-        "/config/server/version",
-      );
+      const result = await client.getVersion();
       return {
         content: [
           { type: "text" as const, text: result },
@@ -45,4 +26,26 @@ export function registerServerTools(
       };
     },
   );
+
+  if (transport === "http") {
+    server.registerTool(
+      "get_server_info",
+      {
+        description:
+          "Get Gerrit server configuration info. Returns server capabilities, " +
+          "authentication methods, change settings, download schemes, and plugin info.",
+        inputSchema: undefined,
+      },
+      async () => {
+        const result = await client.get<GerritServerInfo>(
+          "/config/server/info",
+        );
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+          ],
+        };
+      },
+    );
+  }
 }

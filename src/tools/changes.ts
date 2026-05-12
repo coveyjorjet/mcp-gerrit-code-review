@@ -130,379 +130,384 @@ const ReviewerSchema = z.object({
     .describe("Account ID, username, email, or group name to add"),
 });
 
+interface ToolDef {
+  name: string;
+  description: string;
+  schema: z.ZodType;
+  handler: (...args: any[]) => Promise<any>;
+  sshCommand?: string;
+}
+
 export function registerChangeTools(
   server: McpServer,
   client: GerritClient,
+  availableCommands?: Set<string>,
 ): void {
-  server.registerTool(
-    "query_changes",
+  const transport = client.getTransport();
+  const isAvailable = (sshCmd?: string) => {
+    if (transport === "http") return true;
+    if (!sshCmd) return false;
+    return availableCommands?.has(sshCmd) ?? false;
+  };
+
+  const tools: ToolDef[] = [
     {
+      name: "query_changes",
       description:
         "Query Gerrit changes using Gerrit's query syntax. " +
         "Returns a list of changes matching the query. Common queries: " +
         "'status:open', 'status:merged', 'project:myproject', " +
         "'owner:self', 'reviewer:self', 'is:watched'.",
-      inputSchema: QueryChangesSchema,
-    },
-    async ({ query, limit, start, options }) => {
-      const params = new URLSearchParams();
-      params.set("q", query);
-      params.set("n", String(limit));
-      if (start > 0) params.set("S", String(start));
-      const optList = [
-        "CURRENT_REVISION",
-        "CURRENT_COMMIT",
-        "DETAILED_ACCOUNTS",
-        ...options,
-      ];
-      optList.forEach((o) => params.append("o", o));
+      schema: QueryChangesSchema,
+      sshCommand: "query",
+      handler: async ({ query, limit, start, options }: z.infer<typeof QueryChangesSchema>) => {
+        const params = new URLSearchParams();
+        params.set("q", query);
+        params.set("n", String(limit));
+        if (start > 0) params.set("S", String(start));
+        const optList = [
+          "CURRENT_REVISION",
+          "CURRENT_COMMIT",
+          "DETAILED_ACCOUNTS",
+          ...options,
+        ];
+        optList.forEach((o) => params.append("o", o));
 
-      const result = await client.get<GerritQueryResult[]>(
-        `/changes/?${params.toString()}`,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+        const result = await client.get<GerritQueryResult[]>(
+          `/changes/?${params.toString()}`,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-  );
-
-  server.registerTool(
-    "get_change_details",
     {
+      name: "get_change_details",
       description:
         "Get detailed information about a specific Gerrit change. " +
         "Returns full change metadata including owner, labels, messages, " +
         "revisions, and reviewers.",
-      inputSchema: ChangeIdOptionsSchema,
-    },
-    async ({ change_id, options }) => {
-      const params = new URLSearchParams();
-      const optList = [
-        "CURRENT_REVISION",
-        "CURRENT_COMMIT",
-        "DETAILED_ACCOUNTS",
-        "ALL_REVISIONS",
-        "ALL_COMMITS",
-        "MESSAGES",
-        "REVIEWER_UPDATES",
-        "SUBMITTABLE",
-        ...options,
-      ];
-      optList.forEach((o) => params.append("o", o));
+      schema: ChangeIdOptionsSchema,
+      sshCommand: "query",
+      handler: async ({ change_id, options }: z.infer<typeof ChangeIdOptionsSchema>) => {
+        const params = new URLSearchParams();
+        const optList = [
+          "CURRENT_REVISION",
+          "CURRENT_COMMIT",
+          "DETAILED_ACCOUNTS",
+          "ALL_REVISIONS",
+          "ALL_COMMITS",
+          "MESSAGES",
+          "REVIEWER_UPDATES",
+          "SUBMITTABLE",
+          ...options,
+        ];
+        optList.forEach((o) => params.append("o", o));
 
-      const result = await client.get<GerritChange>(
-        `/changes/${encodeURIComponent(change_id)}/detail?${params.toString()}`,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+        const result = await client.get<GerritChange>(
+          `/changes/${encodeURIComponent(change_id)}/detail?${params.toString()}`,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-  );
-
-  server.registerTool(
-    "list_change_files",
     {
+      name: "list_change_files",
       description:
         "List files modified in a Gerrit change. Returns file paths with status " +
         "(A=Added, D=Deleted, R=Renamed, W=Rewritten, M=Modified), size, " +
         "and line counts.",
-      inputSchema: RevisionIdSchema,
+      schema: RevisionIdSchema,
+      sshCommand: "query",
+      handler: async ({ change_id, revision_id }: z.infer<typeof RevisionIdSchema>) => {
+        const rev = revision_id || "current";
+        const result = await client.get<Record<string, GerritFileInfo>>(
+          `/changes/${encodeURIComponent(change_id)}/revisions/${encodeURIComponent(rev)}/files`,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-    async ({ change_id, revision_id }) => {
-      const rev = revision_id || "current";
-      const result = await client.get<Record<string, GerritFileInfo>>(
-        `/changes/${encodeURIComponent(change_id)}/revisions/${encodeURIComponent(rev)}/files`,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    },
-  );
-
-  server.registerTool(
-    "get_file_diff",
     {
+      name: "get_file_diff",
       description:
         "Get the diff of a specific file in a Gerrit change. " +
         "Returns the unified diff content including added, removed, and " +
         "modified lines with context.",
-      inputSchema: FilePathSchema,
+      schema: FilePathSchema,
+      handler: async ({ change_id, revision_id, file_path }: z.infer<typeof FilePathSchema>) => {
+        const rev = revision_id || "current";
+        const result = await client.get<GerritDiffInfo>(
+          `/changes/${encodeURIComponent(change_id)}/revisions/${encodeURIComponent(rev)}/files/${encodeURIComponent(file_path)}/diff`,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-    async ({ change_id, revision_id, file_path }) => {
-      const rev = revision_id || "current";
-      const result = await client.get<GerritDiffInfo>(
-        `/changes/${encodeURIComponent(change_id)}/revisions/${encodeURIComponent(rev)}/files/${encodeURIComponent(file_path)}/diff`,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    },
-  );
-
-  server.registerTool(
-    "get_commit_message",
     {
+      name: "get_commit_message",
       description:
         "Get the full commit message for a revision of a Gerrit change. " +
         "Includes subject, body, author, committer, and parent commits.",
-      inputSchema: RevisionIdSchema,
+      schema: RevisionIdSchema,
+      sshCommand: "query",
+      handler: async ({ change_id, revision_id }: z.infer<typeof RevisionIdSchema>) => {
+        const rev = revision_id || "current";
+        const result = await client.get<GerritCommit>(
+          `/changes/${encodeURIComponent(change_id)}/revisions/${encodeURIComponent(rev)}/commit`,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-    async ({ change_id, revision_id }) => {
-      const rev = revision_id || "current";
-      const result = await client.get<GerritCommit>(
-        `/changes/${encodeURIComponent(change_id)}/revisions/${encodeURIComponent(rev)}/commit`,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    },
-  );
-
-  server.registerTool(
-    "post_review",
     {
+      name: "post_review",
       description:
         "Post a review on a Gerrit change. Use this to vote on labels " +
         "(e.g. Code-Review: +1), leave a cover message, mark as ready, " +
         "or mark as work-in-progress. This is a mutation — use intentionally.",
-      inputSchema: PostReviewSchema,
-    },
-    async ({ change_id, revision_id, message, labels, tag, ready, work_in_progress }) => {
-      const rev = revision_id || "current";
-      const body: GerritReviewInput = {};
-      if (message) body.message = message;
-      if (labels && Object.keys(labels).length > 0) body.labels = labels;
-      if (tag) body.tag = tag;
-      if (ready !== undefined) body.ready = ready;
-      if (work_in_progress !== undefined) body.work_in_progress = work_in_progress;
+      schema: PostReviewSchema,
+      sshCommand: "review",
+      handler: async ({ change_id, revision_id, message, labels, tag, ready, work_in_progress }: z.infer<typeof PostReviewSchema>) => {
+        const rev = revision_id || "current";
+        const body: GerritReviewInput = {};
+        if (message) body.message = message;
+        if (labels && Object.keys(labels).length > 0) body.labels = labels;
+        if (tag) body.tag = tag;
+        if (ready !== undefined) body.ready = ready;
+        if (work_in_progress !== undefined) body.work_in_progress = work_in_progress;
 
-      const result = await client.post<unknown>(
-        `/changes/${encodeURIComponent(change_id)}/revisions/${encodeURIComponent(rev)}/review`,
-        body,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+        const result = await client.post<unknown>(
+          `/changes/${encodeURIComponent(change_id)}/revisions/${encodeURIComponent(rev)}/review`,
+          body,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-  );
-
-  server.registerTool(
-    "post_review_comment",
     {
+      name: "post_review_comment",
       description:
         "Post an inline comment on a specific file/line in a Gerrit change. " +
         "Use this for line-by-line code review comments. Can reply to " +
         "existing comments. This is a mutation — use intentionally.",
-      inputSchema: ReviewCommentSchema,
+      schema: ReviewCommentSchema,
+      handler: async ({ change_id, revision_id, path, message, line, side, in_reply_to }: z.infer<typeof ReviewCommentSchema>) => {
+        const rev = revision_id || "current";
+        const comment: Record<string, unknown> = {
+          path,
+          message,
+          unresolved: true,
+        };
+        if (line !== undefined) comment.line = line;
+        if (side) comment.side = side;
+        if (in_reply_to) {
+          comment.in_reply_to = in_reply_to;
+          comment.unresolved = undefined;
+        }
+
+        const body: GerritReviewInput = {
+          comments: { [path]: [comment] },
+        };
+
+        const result = await client.post<unknown>(
+          `/changes/${encodeURIComponent(change_id)}/revisions/${encodeURIComponent(rev)}/review`,
+          body,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-    async ({ change_id, revision_id, path, message, line, side, in_reply_to }) => {
-      const rev = revision_id || "current";
-      const comment: Record<string, unknown> = {
-        path,
-        message,
-        unresolved: true,
-      };
-      if (line !== undefined) comment.line = line;
-      if (side) comment.side = side;
-      if (in_reply_to) {
-        comment.in_reply_to = in_reply_to;
-        comment.unresolved = undefined;
-      }
-
-      const body: GerritReviewInput = {
-        comments: { [path]: [comment] },
-      };
-
-      const result = await client.post<unknown>(
-        `/changes/${encodeURIComponent(change_id)}/revisions/${encodeURIComponent(rev)}/review`,
-        body,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    },
-  );
-
-  server.registerTool(
-    "list_change_comments",
     {
+      name: "list_change_comments",
       description:
         "List all comments on a Gerrit change. Returns inline comments " +
         "(with file path, line, and range) and file-level comments. " +
         "Includes unresolved status and reply chains.",
-      inputSchema: ChangeIdSchema,
+      schema: ChangeIdSchema,
+      sshCommand: "query",
+      handler: async ({ change_id }: z.infer<typeof ChangeIdSchema>) => {
+        const result = await client.get<Record<string, GerritComment[]>>(
+          `/changes/${encodeURIComponent(change_id)}/comments`,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-    async ({ change_id }) => {
-      const result = await client.get<Record<string, GerritComment[]>>(
-        `/changes/${encodeURIComponent(change_id)}/comments`,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    },
-  );
-
-  server.registerTool(
-    "submit_change",
     {
+      name: "submit_change",
       description:
         "Submit a Gerrit change for merging. The change must be ready to submit " +
         "(all required labels approved, no merge conflicts). " +
         "This is a mutation — use intentionally and confirm with the user before calling.",
-      inputSchema: ChangeIdSchema,
+      schema: ChangeIdSchema,
+      sshCommand: "submit",
+      handler: async ({ change_id }: z.infer<typeof ChangeIdSchema>) => {
+        const result = await client.post<GerritChange>(
+          `/changes/${encodeURIComponent(change_id)}/submit`,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-    async ({ change_id }) => {
-      const result = await client.post<GerritChange>(
-        `/changes/${encodeURIComponent(change_id)}/submit`,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    },
-  );
-
-  server.registerTool(
-    "abandon_change",
     {
+      name: "abandon_change",
       description:
         "Abandon a Gerrit change. The change will no longer be considered for " +
         "submission. Provide a reason message. " +
         "This is a mutation — use intentionally and confirm with the user before calling.",
-      inputSchema: AbandonSchema,
-    },
-    async ({ change_id, message }) => {
-      const body: Record<string, string> = {};
-      if (message) body.message = message;
+      schema: AbandonSchema,
+      sshCommand: "abandon",
+      handler: async ({ change_id, message }: z.infer<typeof AbandonSchema>) => {
+        const body: Record<string, string> = {};
+        if (message) body.message = message;
 
-      const result = await client.post<GerritChange>(
-        `/changes/${encodeURIComponent(change_id)}/abandon`,
-        Object.keys(body).length > 0 ? body : undefined,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+        const result = await client.post<GerritChange>(
+          `/changes/${encodeURIComponent(change_id)}/abandon`,
+          Object.keys(body).length > 0 ? body : undefined,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-  );
-
-  server.registerTool(
-    "restore_change",
     {
+      name: "restore_change",
       description:
         "Restore an abandoned Gerrit change back to active status. " +
         "This is a mutation — use intentionally.",
-      inputSchema: ChangeIdSchema,
+      schema: ChangeIdSchema,
+      sshCommand: "restore",
+      handler: async ({ change_id }: z.infer<typeof ChangeIdSchema>) => {
+        const result = await client.post<GerritChange>(
+          `/changes/${encodeURIComponent(change_id)}/restore`,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-    async ({ change_id }) => {
-      const result = await client.post<GerritChange>(
-        `/changes/${encodeURIComponent(change_id)}/restore`,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    },
-  );
-
-  server.registerTool(
-    "list_reviewers",
     {
+      name: "list_reviewers",
       description:
         "List all reviewers of a Gerrit change. Returns reviewers, CC'd users, " +
         "and removed reviewers along with their approval status.",
-      inputSchema: ChangeIdSchema,
+      schema: ChangeIdSchema,
+      sshCommand: "query",
+      handler: async ({ change_id }: z.infer<typeof ChangeIdSchema>) => {
+        const result = await client.get<GerritReviewerInfo[]>(
+          `/changes/${encodeURIComponent(change_id)}/reviewers`,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-    async ({ change_id }) => {
-      const result = await client.get<GerritReviewerInfo[]>(
-        `/changes/${encodeURIComponent(change_id)}/reviewers`,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    },
-  );
-
-  server.registerTool(
-    "add_reviewer",
     {
+      name: "add_reviewer",
       description:
         "Add a reviewer to a Gerrit change. Accepts account ID, username, " +
         "email address, or group name. The reviewer will be notified. " +
         "This is a mutation — use intentionally.",
-      inputSchema: ReviewerSchema,
+      schema: ReviewerSchema,
+      sshCommand: "set-reviewers",
+      handler: async ({ change_id, reviewer }: z.infer<typeof ReviewerSchema>) => {
+        const body = { reviewer };
+        const result = await client.post<unknown>(
+          `/changes/${encodeURIComponent(change_id)}/reviewers`,
+          body,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      },
     },
-    async ({ change_id, reviewer }) => {
-      const body = { reviewer };
-      const result = await client.post<unknown>(
-        `/changes/${encodeURIComponent(change_id)}/reviewers`,
-        body,
-      );
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    },
-  );
+  ];
+
+  for (const tool of tools) {
+    if (!isAvailable(tool.sshCommand)) {
+      continue;
+    }
+    server.registerTool(
+      tool.name,
+      {
+        description: tool.description,
+        inputSchema: tool.schema,
+      },
+      tool.handler,
+    );
+  }
 }

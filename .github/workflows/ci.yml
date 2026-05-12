@@ -121,6 +121,8 @@ jobs:
         uses: cycjimmy/semantic-release-action@v6
         with:
           branch: main
+          extra_plugins: |
+            @semantic-release/git
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # NPM_TOKEN intentionally omitted — OIDC handles npm auth

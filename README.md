@@ -1,23 +1,101 @@
-# mcp-gerrit-code-review
+# MCP Gerrit Code Review
 
-MCP Server providing AI agents with minimal, focused tooling for Gerrit code review workflows.
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Setup
+MCP Server providing AI agents with tooling for Gerrit code review workflows via stdio transport.
+
+## Features
+
+- **19 tools** across 4 categories: Changes, Accounts, Projects, Server
+- **Basic Auth** with env vars or `~/.netrc` fallback
+- **TypeScript strict mode** with Zod input validation
+- **ESM modules** with stdio transport
+
+## Installation
 
 ```bash
-npm install
-npm run build
+npm install && npm run build
 ```
 
 ## Configuration
 
-Set environment variables:
+Set via environment variables:
 
 ```bash
 export GERRIT_URL=https://gerrit.example.com
 export GERRIT_USERNAME=your-username
 export GERRIT_PASSWORD=your-http-password
 ```
+
+Or use `~/.netrc`:
+
+```
+machine gerrit.example.com
+  login your-username
+  password your-http-password
+```
+
+## Usage
+
+Add to your MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "gerrit": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "env": {
+        "GERRIT_URL": "https://gerrit.example.com",
+        "GERRIT_USERNAME": "your-username",
+        "GERRIT_PASSWORD": "your-http-password"
+      }
+    }
+  }
+}
+```
+
+## Tools
+
+| Category | Tools | Description |
+|----------|-------|-------------|
+| **Changes** | `query_changes`, `get_change_details`, `list_change_files`, `get_file_diff`, `get_commit_message`, `post_review`, `post_review_comment`, `list_change_comments`, `submit_change`, `abandon_change`, `restore_change`, `list_reviewers`, `add_reviewer` | Code review operations |
+| **Accounts** | `get_account`, `query_accounts` | User account management |
+| **Projects** | `list_projects`, `get_project` | Project discovery |
+| **Server** | `get_server_info`, `get_server_version` | Server metadata |
+
+> ⚠️ **Mutation tools** (`post_review`, `submit_change`, `abandon_change`, `restore_change`, `add_reviewer`) modify Gerrit state — confirm with user before calling.
+
+## Architecture
+
+```
+src/
+├── index.ts              # Entry point, MCP server setup
+├── gerrit/
+│   ├── client.ts         # Gerrit API wrapper with auth
+│   └── types.ts          # TypeScript interfaces
+├── tools/
+│   ├── changes.ts        # 13 change-related tools
+│   ├── accounts.ts       # 2 account tools
+│   ├── projects.ts       # 2 project tools
+│   └── server.ts         # 2 server tools
+└── utils/
+    └── parsing.ts        # Credential resolution
+```
+
+## Development
+
+```bash
+npm run dev          # Watch mode rebuild
+npm test             # Run tests once
+npm run test:watch   # Watch mode tests
+npm run lint         # Type check (tsc --noEmit)
+```
+
+## License
+
+MIT
 
 Or use `~/.netrc`:
 

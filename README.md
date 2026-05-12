@@ -1,5 +1,6 @@
 # MCP Gerrit Code Review
 
+[![npm](https://img.shields.io/npm/v/mcp-gerrit-code-review.svg)](https://www.npmjs.com/package/mcp-gerrit-code-review)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -14,7 +15,23 @@ MCP Server providing AI agents with tooling for Gerrit code review workflows via
 
 ## Installation
 
+### Option 1: Install from npm (Recommended)
+
 ```bash
+npx mcp-gerrit-code-review
+```
+
+Or install globally:
+
+```bash
+npm install -g mcp-gerrit-code-review
+```
+
+### Option 2: Build from source
+
+```bash
+git clone https://github.com/coveyjorjet/mcp-gerrit-code-review.git
+cd mcp-gerrit-code-review
 npm install && npm run build
 ```
 
@@ -39,6 +56,26 @@ machine gerrit.example.com
 ## Usage
 
 Add to your MCP client configuration:
+
+### Using npm package
+
+```json
+{
+  "mcpServers": {
+    "gerrit": {
+      "command": "npx",
+      "args": ["-y", "mcp-gerrit-code-review"],
+      "env": {
+        "GERRIT_URL": "https://gerrit.example.com",
+        "GERRIT_USERNAME": "your-username",
+        "GERRIT_PASSWORD": "your-http-password"
+      }
+    }
+  }
+}
+```
+
+### Using local build
 
 ```json
 {
@@ -65,7 +102,7 @@ Add to your MCP client configuration:
 | **Projects** | `list_projects`, `get_project` | Project discovery |
 | **Server** | `get_server_info`, `get_server_version` | Server metadata |
 
-> ⚠️ **Mutation tools** (`post_review`, `submit_change`, `abandon_change`, `restore_change`, `add_reviewer`) modify Gerrit state — confirm with user before calling.
+> ⚠️ **Mutation tools** (`post_review`, `post_review_comment`, `submit_change`, `abandon_change`, `restore_change`, `add_reviewer`) modify Gerrit state — confirm with user before calling.
 
 ## Architecture
 
@@ -96,81 +133,3 @@ npm run lint         # Type check (tsc --noEmit)
 ## License
 
 MIT
-
-Or use `~/.netrc`:
-
-```
-machine gerrit.example.com
-  login your-username
-  password your-http-password
-```
-
-## Usage
-
-Add to your MCP client configuration:
-
-```json
-{
-  "mcpServers": {
-    "gerrit": {
-      "command": "node",
-      "args": ["/path/to/mcp-gerrit-code-review/dist/index.js"],
-      "env": {
-        "GERRIT_URL": "https://gerrit.example.com",
-        "GERRIT_USERNAME": "your-username",
-        "GERRIT_PASSWORD": "your-http-password"
-      }
-    }
-  }
-}
-```
-
-## Tools
-
-### Changes (Core) — 13 tools
-
-| Tool | Description |
-|------|-------------|
-| `query_changes` | Search changes with Gerrit query syntax |
-| `get_change_details` | Full change metadata, messages, labels |
-| `list_change_files` | Files modified in a change |
-| `get_file_diff` | Unified diff for a specific file |
-| `get_commit_message` | Full commit message for a revision |
-| `post_review` | Vote on labels, leave cover message |
-| `post_review_comment` | Post inline/file-level comments |
-| `list_change_comments` | All comments on a change |
-| `submit_change` | Submit a change for merging |
-| `abandon_change` | Abandon a change |
-| `restore_change` | Restore an abandoned change |
-| `list_reviewers` | List change reviewers |
-| `add_reviewer` | Add a reviewer to a change |
-
-### Accounts — 2 tools
-
-| Tool | Description |
-|------|-------------|
-| `get_account` | Get account details (use 'self' for current user) |
-| `query_accounts` | Search accounts by name/email/username |
-
-### Projects — 2 tools
-
-| Tool | Description |
-|------|-------------|
-| `list_projects` | List accessible projects |
-| `get_project` | Get project details (branches, labels, etc.) |
-
-### Server — 2 tools
-
-| Tool | Description |
-|------|-------------|
-| `get_server_info` | Server configuration and capabilities |
-| `get_server_version` | Server version string |
-
-## Development
-
-```bash
-npm run dev      # Watch mode
-npm test         # Run tests
-npm run test:watch  # Watch tests
-npm run lint     # Type check
-```

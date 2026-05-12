@@ -117,6 +117,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build
+        run: npm run build
+
       - name: Semantic Release
         uses: cycjimmy/semantic-release-action@v6
         with:

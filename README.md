@@ -55,14 +55,60 @@ machine gerrit.example.com
 
 ## Usage
 
+### Using with OpenCode
+
+Add to your `opencode.json` or `opencode.jsonc`:
+
+#### Using npm package
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "mcp-gerrit-code-review": {
+      "type": "local",
+      "command": ["npx", "-y", "mcp-gerrit-code-review"],
+      "enabled": true,
+      "environment": {
+        "GERRIT_URL": "https://gerrit.example.com",
+        "GERRIT_USERNAME": "your-username",
+        "GERRIT_PASSWORD": "your-http-password"
+      }
+    }
+  }
+}
+```
+
+#### Using local build
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "mcp-gerrit-code-review": {
+      "type": "local",
+      "command": ["node", "/path/to/mcp-gerrit-code-review/dist/index.js"],
+      "enabled": true,
+      "environment": {
+        "GERRIT_URL": "https://gerrit.example.com",
+        "GERRIT_USERNAME": "your-username",
+        "GERRIT_PASSWORD": "your-http-password"
+      }
+    }
+  }
+}
+```
+
+### Other MCP Clients
+
 Add to your MCP client configuration:
 
-### Using npm package
+#### Using npm package
 
 ```json
 {
   "mcpServers": {
-    "gerrit": {
+    "mcp-gerrit-code-review": {
       "command": "npx",
       "args": ["-y", "mcp-gerrit-code-review"],
       "env": {
@@ -75,12 +121,12 @@ Add to your MCP client configuration:
 }
 ```
 
-### Using local build
+#### Using local build
 
 ```json
 {
   "mcpServers": {
-    "gerrit": {
+    "mcp-gerrit-code-review": {
       "command": "node",
       "args": ["dist/index.js"],
       "env": {

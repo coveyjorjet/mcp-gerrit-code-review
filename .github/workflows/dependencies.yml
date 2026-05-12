@@ -1,0 +1,52 @@
+name: Dependency Management
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Check for outdated packages
+        run: npm outdated || true
+
+      - name: Update dependencies
+        run: |
+          npm update
+          npm audit fix || true
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          git diff --exit-code package-lock.json || echo "changes=true" >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request
+        if: steps.git-check.outputs.changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(deps): update dependencies"
+          title: "chore(deps): update dependencies"
+          body: |
+            Automated dependency updates.
+
+            - Ran `npm update` to update packages within semver ranges
+            - Ran `npm audit fix` to address security vulnerabilities
+
+            Please review and merge if CI passes.
+          branch: automated-deps-update
+          delete-branch: true
+          base: main
+          labels: dependencies
